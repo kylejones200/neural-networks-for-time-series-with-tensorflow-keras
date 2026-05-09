@@ -6,6 +6,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 # Add src to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -209,8 +215,8 @@ def forecast(
 def main():
     """Main execution function."""
     if not TFP_AVAILABLE:
-        print("ERROR: TensorFlow Probability is not installed.")
-        print("Install with: pip install tensorflow tensorflow-probability")
+        logger.error("ERROR: TensorFlow Probability is not installed.")
+        logger.info("Install with: pip install tensorflow tensorflow-probability")
         sys.exit(1)
     
     script_dir = Path(__file__).parent
@@ -237,7 +243,7 @@ def main():
     
     # Build model
     model_config = config.get("model", {})
-    print("Building structural time series model...")
+    logger.info("Building structural time series model...")
     model = build_structural_model(
         observed_time_series=train_values,
         num_seasons=model_config.get("num_seasons", 12),
@@ -246,10 +252,10 @@ def main():
         include_autoregressive=model_config.get("include_autoregressive", False),
         ar_order=model_config.get("ar_order", 1),
     )
-    print(f"Model components: {[c.name for c in model.components]}")
+    logger.info(f"Model components: {[c.name for c in model.components]}")
     
     # Fit model
-    print("Fitting model with variational inference...")
+    logger.info("Fitting model with variational inference...")
     variational_posteriors, parameter_samples, elbo_loss = fit_model(
         model=model,
         observed_time_series=train_values,
@@ -257,11 +263,11 @@ def main():
         learning_rate=model_config.get("learning_rate", 0.1),
         num_samples=model_config.get("num_samples", 50),
     )
-    print(f"ELBO loss (final): {elbo_loss[-1]:.2f}")
+    logger.info(f"ELBO loss (final): {elbo_loss[-1]:.2f}")
     
     # Generate forecast
     forecast_horizon = config["evaluation"].get("forecast_horizon", len(test))
-    print(f"Generating {forecast_horizon}-step forecast...")
+    logger.info(f"Generating {forecast_horizon}-step forecast...")
     forecast_mean, forecast_std, forecast_samples = forecast(
         model=model,
         observed_time_series=train_values,
@@ -295,11 +301,11 @@ def main():
         rmse = np.sqrt(mse)
         r2 = r2_score(test.values, forecast_mean)
         
-        print(f"\nTest Set Performance:")
-        print(f"  RMSE: {rmse:.4f}")
-        print(f"  MAE:  {mae:.4f}")
-        print(f"  R²:   {r2:.4f}")
-        print(f"  Mean Uncertainty (σ): {forecast_std.mean():.4f}")
+        logger.info(f"\nTest Set Performance:")
+        logger.info(f"  RMSE: {rmse:.4f}")
+        logger.info(f"  MAE:  {mae:.4f}")
+        logger.info(f"  R²:   {r2:.4f}")
+        logger.info(f"  Mean Uncertainty (σ): {forecast_std.mean():.4f}")
     
     # Create plot
     fig, ax = create_forecast_plot(
@@ -319,7 +325,7 @@ def main():
     # Save plot
     plot_path = output_dir / config["output"].get("plot_file", "tfp_forecast.png")
     save_plot(fig, plot_path, dpi=config["output"].get("dpi", 300))
-    print(f"\nPlot saved to: {plot_path}")
+    logger.info(f"\nPlot saved to: {plot_path}")
     
     # Save forecast to CSV
     forecast_df = pd.DataFrame({
@@ -332,7 +338,7 @@ def main():
     
     csv_path = output_dir / config["output"].get("forecast_file", "tfp_forecast.csv")
     forecast_df.to_csv(csv_path, index=False, encoding="utf-8")
-    print(f"Forecast saved to: {csv_path}")
+    logger.info(f"Forecast saved to: {csv_path}")
     
     # Save metrics if available
     if len(forecast_series) == len(test):
@@ -343,7 +349,7 @@ def main():
         
         metrics_path = output_dir / config["output"].get("metrics_file", "tfp_metrics.csv")
         metrics_df.to_csv(metrics_path, index=False, encoding="utf-8")
-        print(f"Metrics saved to: {metrics_path}")
+        logger.info(f"Metrics saved to: {metrics_path}")
 
 
 if __name__ == "__main__":
