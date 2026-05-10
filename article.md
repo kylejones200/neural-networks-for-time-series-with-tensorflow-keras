@@ -12,132 +12,84 @@ There are also no assumptions of stationarity or predefined trends for Neural Ne
 
 A feedforward neural network can be used to predict future values by using lagged observations as input features. While basic, it's a good starting point for time series forecasting.
 
-    Feedforward Neural Network for Simple Forecasting
+Feedforward Neural Network for Simple Forecasting
 
-    import tensorflow as tf
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf from sklearn.model_selection import train_test_split from sklearn.preprocessing import MinMaxScaler
 
     # Generate synthetic data
-    np.random.seed(42)
-    time = np.arange(100)
-    data = 10 + 0.5 * time + np.sin(0.2 * time) + np.random.normal(scale=1.0, size=100)
+np.random.seed(42) time = np.arange(100) data = 10 + 0.5 * time + np.sin(0.2 * time) + np.random.normal(scale=1.0, size=100)
 
     # Create lagged features
-    def create_features(data, lag=3):
-        X, y = [], []
-        for i in range(len(data) - lag):
-            X.append(data[i:i + lag])
-            y.append(data[i + lag])
-        return np.array(X), np.array(y)
+def create_features(data, lag=3): X, y = [], [] for i in range(len(data) - lag): X.append(data[i:i + lag]) y.append(data[i + lag]) return np.array(X), np.array(y)
 
-    lag = 3
-    X, y = create_features(data, lag=lag)
+lag = 3 X, y = create_features(data, lag=lag)
 
     # Split data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     # Normalize the data
-    scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
+scaler = MinMaxScaler() X_train = scaler.fit_transform(X_train) X_test = scaler.transform(X_test)
 
     # Build a simple feedforward neural network
-    model = tf.keras.Sequential([
-        tf.keras.layers.Dense(64, activation='relu', input_shape=(lag,)),
-        tf.keras.layers.Dense(32, activation='relu'),
-        tf.keras.layers.Dense(1)
-    ])
+model = tf.keras.Sequential([ tf.keras.layers.Dense(64, activation='relu', input_shape=(lag,)), tf.keras.layers.Dense(32, activation='relu'), tf.keras.layers.Dense(1) ])
 
-    model.compile(optimizer='adam', loss='mse')
-    model.summary()
+model.compile(optimizer='adam', loss='mse') model.summary()
 
     # Train the model
-    model.fit(X_train, y_train, epochs=50, batch_size=8, verbose=1, validation_split=0.1)
+model.fit(X_train, y_train, epochs=50, batch_size=8, verbose=1, validation_split=0.1)
 
     # Evaluate and predict
-    y_pred = model.predict(X_test)
-    mape = mean_absolute_percentage_error(y_test, y_pred)
+y_pred = model.predict(X_test) mape = mean_absolute_percentage_error(y_test, y_pred)
 
     # Plot results
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(10, 6))
-    plt.plot(y_test, label='Actual', color='Blue')
-    plt.plot(y_pred, label='Predicted', color='Red')
-    plt.title(f'Feedforward Neural Network Forecast \n MAPE: {mape:.3f}')
-    plt.legend()
-    plt.savefig("NN_forecast.png")
-    plt.show()
+import matplotlib.pyplot as plt plt.figure(figsize=(10, 6)) plt.plot(y_test, label='Actual', color='Blue') plt.plot(y_pred, label='Predicted', color='Red') plt.title(f'Feedforward Neural Network Forecast \n MAPE: {mape:.3f}') plt.legend() plt.savefig("NN_forecast.png") plt.show()
 
 ## Recurrent Neural Networks (RNNs)
 
 Recurrent neural networks are designed to handle sequential data by maintaining a hidden state that captures information about previous time steps. This makes them ideal for time series.
 
-    Basic RNN for Time Series
+Basic RNN for Time Series
 
-    from tensorflow.keras.layers import SimpleRNN
+from tensorflow.keras.layers import SimpleRNN
 
     # Build an RNN model
-    model = tf.keras.Sequential([
-        SimpleRNN(50, activation='relu', input_shape=(lag, 1)),
-        tf.keras.layers.Dense(1)
-    ])
+model = tf.keras.Sequential([ SimpleRNN(50, activation='relu', input_shape=(lag, 1)), tf.keras.layers.Dense(1) ])
 
-    model.compile(optimizer='adam', loss='mse')
-    model.summary()
+model.compile(optimizer='adam', loss='mse') model.summary()
 
     # Reshape input for RNN (samples, timesteps, features)
-    X_train_rnn = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
-    X_test_rnn = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+X_train_rnn = X_train.reshape(X_train.shape[0], X_train.shape[1], 1) X_test_rnn = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
 
     # Train the model
-    model.fit(X_train_rnn, y_train, epochs=50, batch_size=8, verbose=1, validation_split=0.1)
+model.fit(X_train_rnn, y_train, epochs=50, batch_size=8, verbose=1, validation_split=0.1)
 
     # Predict
-    y_pred_rnn = model.predict(X_test_rnn)
-    mape = mean_absolute_percentage_error(y_test, y_pred_rnn)
+y_pred_rnn = model.predict(X_test_rnn) mape = mean_absolute_percentage_error(y_test, y_pred_rnn)
 
     # Plot results
-    plt.figure(figsize=(10, 6))
-    plt.plot(y_test, label='Actual', color='Blue')
-    plt.plot(y_pred_rnn, label='Predicted', color='Red')
-    plt.title(f'Recurrent Neural Network Forecast \n MAPE: {mape:.3f}')
-    plt.legend()
-    plt.savefig("RNN_forecast.png")
-    plt.show()
+plt.figure(figsize=(10, 6)) plt.plot(y_test, label='Actual', color='Blue') plt.plot(y_pred_rnn, label='Predicted', color='Red') plt.title(f'Recurrent Neural Network Forecast \n MAPE: {mape:.3f}') plt.legend() plt.savefig("RNN_forecast.png") plt.show()
 
 ## Long Short-Term Memory (LSTM) Networks
 
 LSTMs are a type of RNN that solve the vanishing gradient problem (ohh! ahh!). Basically, LSTMs remember previous values, which gives them a leg up on other NNs for complex time series with long-range patterns.
 
-    Long Short-Term Memory (LSTM) Networks for time series
+Long Short-Term Memory (LSTM) Networks for time series
 
-    from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import LSTM
 
     # Build an LSTM model
-    model = tf.keras.Sequential([
-        LSTM(50, activation='relu', input_shape=(lag, 1)),
-        tf.keras.layers.Dense(1)
-    ])
+model = tf.keras.Sequential([ LSTM(50, activation='relu', input_shape=(lag, 1)), tf.keras.layers.Dense(1) ])
 
-    model.compile(optimizer='adam', loss='mse')
-    model.summary()
+model.compile(optimizer='adam', loss='mse') model.summary()
 
     # Train the model
-    model.fit(X_train_rnn, y_train, epochs=50, batch_size=8, verbose=1, validation_split=0.1)
+model.fit(X_train_rnn, y_train, epochs=50, batch_size=8, verbose=1, validation_split=0.1)
 
     # Predict
-    y_pred_lstm = model.predict(X_test_rnn)
-    mape = mean_absolute_percentage_error(y_test, y_pred_lstm)
+y_pred_lstm = model.predict(X_test_rnn) mape = mean_absolute_percentage_error(y_test, y_pred_lstm)
 
     # Plot results
-    plt.figure(figsize=(10, 6))
-    plt.plot(y_test, label='Actual', color='Blue')
-    plt.plot(y_pred_lstm, label='Predicted', color='Red')
-    plt.title(f'LSTM Forecast. MAPE: {mape:.3f}')
-    plt.legend()
-    plt.savefig("LSTM_forecast.png")
-    plt.show()
+plt.figure(figsize=(10, 6)) plt.plot(y_test, label='Actual', color='Blue') plt.plot(y_pred_lstm, label='Predicted', color='Red') plt.title(f'LSTM Forecast. MAPE: {mape:.3f}') plt.legend() plt.savefig("LSTM_forecast.png") plt.show()
 
 The graphs illustrate how neural networks can be great at matching complex time series, but with that level of mimicry comes worries about overfitting.
 
