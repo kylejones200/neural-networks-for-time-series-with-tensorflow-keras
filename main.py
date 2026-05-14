@@ -44,7 +44,6 @@ from src import (
 )
 from src.evaluator import Evaluator
 
-warnings.filterwarnings("ignore")
 
 
 def build_structural_model(
