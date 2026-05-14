@@ -99,7 +99,7 @@ I built these using Tensorflow directly. There are lots of other ways to work wi
 
 N-BEATS (Neural Basis Expansion Analysis for Time Series) is a deep learning model specifically designed for time series forecasting.
 
-**Real-world data: ERCOT Load Data**
+Real-world data: ERCOT Load Data
 
 Initially, I used simulated data. But what about real data? Let's use data from ERCOT, the grid balancing authority in Texas.
 
