@@ -84,14 +84,14 @@ def build_structural_model(
     
     if include_trend:
         trend = sts.LocalLinearTrend(observed_time_series=observed_time_series)
-        components.append(trend)
+        pd.concat([components, trend])
     
     if include_seasonal:
         seasonal = sts.Seasonal(
             num_seasons=num_seasons,
             observed_time_series=observed_time_series,
         )
-        components.append(seasonal)
+        pd.concat([components, seasonal])
     
     if include_autoregressive:
         autoregressive = sts.Autoregressive(
@@ -99,7 +99,7 @@ def build_structural_model(
             observed_time_series=observed_time_series,
             name="autoregressive",
         )
-        components.append(autoregressive)
+        pd.concat([components, autoregressive])
     
     if not components:
         raise ValueError("At least one component (trend, seasonal, or autoregressive) must be included")
@@ -213,7 +213,7 @@ def forecast(
 def main():
     """Main execution function."""
     if not TFP_AVAILABLE:
-        logger.error("ERROR: TensorFlow Probability is not installed.")
+        logger.error("ERROR: TensorFlow Probability is not installed.", exc_info=True)
         logger.info("Install with: pip install tensorflow tensorflow-probability")
         sys.exit(1)
     
