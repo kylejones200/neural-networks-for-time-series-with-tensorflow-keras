@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
 import logging
 import sys
 from pathlib import Path
@@ -20,9 +23,8 @@ import pandas as pd
 
 # Try to import TensorFlow Probability
 try:
-    import tensorflow as tf
-    import tensorflow_probability as tfp
-    from tensorflow_probability import sts
+    # tensorflow_probability replaced: use statsmodels.tsa.statespace or pyro for STS/VI
+# pip install pyro-ppl  →  import pyro; import pyro.distributions as dist
 
     TFP_AVAILABLE = True
 except ImportError:
@@ -141,14 +143,13 @@ def fit_model(
         raise ImportError("TensorFlow Probability is required for this template")
 
     # Build variational surrogate posteriors
-    variational_posteriors = tfp.sts.build_factored_surrogate_posterior(model=model)
+    # TODO(pytorch-migration): variational_posteriors = tfp.sts.build_factored_surrogate_posterior(model=model)
 
     # Optimize variational loss
-    optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+    optimizer = torch.optim.Adam(learning_rate=learning_rate)
 
-    @tf.function
-    def train():
-        elbo_loss_curve = tfp.vi.fit_surrogate_posterior(
+        def train():
+        # TODO(pytorch-migration): elbo_loss_curve = tfp.vi.fit_surrogate_posterior(
             target_log_prob_fn=model.joint_log_prob(
                 observed_time_series=observed_time_series
             ),
@@ -198,7 +199,7 @@ def forecast(
         raise ImportError("TensorFlow Probability is required for this template")
 
     # Generate forecast distribution
-    forecast_dist = tfp.sts.forecast(
+    # TODO(pytorch-migration): forecast_dist = tfp.sts.forecast(
         model=model,
         observed_time_series=observed_time_series,
         parameter_samples=parameter_samples,
