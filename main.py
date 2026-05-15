@@ -30,7 +30,7 @@ try:
 except ImportError:
     TFP_AVAILABLE = False
     warnings.warn(
-        "TensorFlow Probability not available. Install with: pip install tensorflow tensorflow-probability"
+        "PyTorch/pyro not available. Install with: pip install pyro-pplorflow-probability"
     )
 
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -218,7 +218,7 @@ def main():
     """Main execution function."""
     if not TFP_AVAILABLE:
         logger.error("ERROR: TensorFlow Probability is not installed.", exc_info=True)
-        logger.info("Install with: pip install tensorflow tensorflow-probability")
+        logger.info("Install with: pip install pyro-ppl")
         sys.exit(1)
 
     script_dir = Path(__file__).parent
