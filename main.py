@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 import warnings
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 # Try to import TensorFlow Probability
 try:
@@ -237,7 +236,7 @@ def main():
     
     # Convert to numpy for TFP
     train_values = train.values.astype(np.float32)
-    test_values = test.values.astype(np.float32)
+    test.values.astype(np.float32)
     
     # Build model
     model_config = config.get("model", {})
@@ -284,7 +283,7 @@ def main():
     )
     
     forecast_series = pd.Series(forecast_mean, index=forecast_dates)
-    forecast_std_series = pd.Series(forecast_std, index=forecast_dates)
+    pd.Series(forecast_std, index=forecast_dates)
     
     # Create confidence intervals (95% CI = mean ± 1.96 * std)
     conf_int = pd.DataFrame({
@@ -299,7 +298,7 @@ def main():
         rmse = np.sqrt(mse)
         r2 = r2_score(test.values, forecast_mean)
         
-        logger.info(f"\nTest Set Performance:")
+        logger.info("\nTest Set Performance:")
         logger.info(f"  RMSE: {rmse:.4f}")
         logger.info(f"  MAE:  {mae:.4f}")
         logger.info(f"  R²:   {r2:.4f}")
