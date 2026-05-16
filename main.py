@@ -1,41 +1,17 @@
 #!/usr/bin/env python3
-"""TensorFlow Probability Structural Time Series for probabilistic forecasting."""
+"""Structural Time Series forecasting with statsmodels (replaces tensorflow_probability.sts)."""
 
 from __future__ import annotations
 
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 import logging
 import sys
 from pathlib import Path
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-# Add src to path
-
-import warnings
-
 import numpy as np
 import pandas as pd
-
-# Try to import TensorFlow Probability
-try:
-    # tensorflow_probability replaced: use statsmodels.tsa.statespace or pyro for STS/VI
-# pip install pyro-ppl  →  import pyro; import pyro.distributions as dist
-
-    TFP_AVAILABLE = True
-except ImportError:
-    TFP_AVAILABLE = False
-    warnings.warn(
-        "PyTorch/pyro not available. Install with: pip install pyro-pplorflow-probability"
-    )
-
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from statsmodels.tsa.statespace.structural import UnobservedComponents
 
-# Import consolidated utilities
 from src import (
     create_forecast_plot,
     ensure_output_dir,
@@ -46,6 +22,9 @@ from src import (
 )
 from src.evaluator import Evaluator
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
 
 def build_structural_model(
     observed_time_series: np.ndarray,
@@ -54,199 +33,125 @@ def build_structural_model(
     include_seasonal: bool = True,
     include_autoregressive: bool = False,
     ar_order: int = 1,
-) -> sts.Sum:
+) -> dict:
     """
-    Build a structural time series model.
+    Build a structural time series model specification.
 
-    Parameters:
-    -----------
-    observed_time_series : np.ndarray
-        Observed time series values
-    num_seasons : int
-        Number of seasonal periods (e.g., 12 for monthly, 4 for quarterly)
-    include_trend : bool
-        Whether to include local linear trend component
-    include_seasonal : bool
-        Whether to include seasonal component
-    include_autoregressive : bool
-        Whether to include autoregressive component
-    ar_order : int
-        Order of autoregressive component
-
-    Returns:
-    --------
-    sts.Sum
-        Structural time series model
+    Replaces tfp.sts.LocalLinearTrend / Seasonal / Autoregressive / Sum.
+    Returns a kwargs dict for statsmodels UnobservedComponents.
     """
-    if not TFP_AVAILABLE:
-        raise ImportError("TensorFlow Probability is required for this template")
-
-    components = []
+    spec: dict = {}
 
     if include_trend:
-        trend = sts.LocalLinearTrend(observed_time_series=observed_time_series)
-        pd.concat([components, trend])
+        spec["level"] = "local linear trend"   # ← was sts.LocalLinearTrend
+    elif not include_seasonal and not include_autoregressive:
+        spec["level"] = "local level"
 
     if include_seasonal:
-        seasonal = sts.Seasonal(
-            num_seasons=num_seasons,
-            observed_time_series=observed_time_series,
-        )
-        pd.concat([components, seasonal])
+        spec["seasonal"] = num_seasons          # ← was sts.Seasonal
 
     if include_autoregressive:
-        autoregressive = sts.Autoregressive(
-            order=ar_order,
-            observed_time_series=observed_time_series,
-            name="autoregressive",
-        )
-        pd.concat([components, autoregressive])
+        spec["autoregressive"] = ar_order       # ← was sts.Autoregressive
 
-    if not components:
+    if not spec:
         raise ValueError(
             "At least one component (trend, seasonal, or autoregressive) must be included"
         )
 
-    model = sts.Sum(components, observed_time_series=observed_time_series)
-    return model
+    return spec
 
 
 def fit_model(
-    model: sts.Sum,
+    model_spec: dict,
     observed_time_series: np.ndarray,
     num_variational_steps: int = 200,
     learning_rate: float = 0.1,
     num_samples: int = 50,
 ) -> tuple:
     """
-    Fit structural time series model using variational inference.
+    Fit the structural time series model using statsmodels MLE.
 
-    Parameters:
-    -----------
-    model : sts.Sum
-        Structural time series model
-    observed_time_series : np.ndarray
-        Observed time series values
-    num_variational_steps : int
-        Number of optimization steps
-    learning_rate : float
-        Learning rate for optimizer
-    num_samples : int
-        Number of posterior samples to draw
+    Replaces tfp.vi.fit_surrogate_posterior + tfp.sts.build_factored_surrogate_posterior.
 
     Returns:
-    --------
-    tuple
-        (variational_posteriors, parameter_samples, elbo_loss_curve)
+        fitted_result  – statsmodels UnobservedComponentsResults
+        state_samples  – simulation-smoother draws (shape: num_samples × T × state_dim)
+        log_likelihood – scalar np.ndarray (proxy for ELBO loss curve)
     """
-    if not TFP_AVAILABLE:
-        raise ImportError("TensorFlow Probability is required for this template")
+    uc = UnobservedComponents(observed_time_series, **model_spec)
+    result = uc.fit(method="powell", maxiter=num_variational_steps, disp=False)
 
-    # Build variational surrogate posteriors
-    # TODO(pytorch-migration): variational_posteriors = tfp.sts.build_factored_surrogate_posterior(model=model)
+    # Simulation smoother: draws from the smoothed state posterior
+    # Replaces variational_posteriors.sample(num_samples)
+    sim = result.simulation_smoother()
+    state_samples = []
+    for _ in range(num_samples):
+        sim.simulate()
+        state_samples.append(sim.simulated_state.copy())   # (state_dim, T)
+    state_samples = np.stack(state_samples)                # (N, state_dim, T)
 
-    # Optimize variational loss
-    optimizer = torch.optim.Adam(learning_rate=learning_rate)
+    # Return neg-log-lik as a 1-element "loss curve" for API compatibility
+    loss_curve = np.array([-result.llf])
 
-        def train():
-        # TODO(pytorch-migration): elbo_loss_curve = tfp.vi.fit_surrogate_posterior(
-            target_log_prob_fn=model.joint_log_prob(
-                observed_time_series=observed_time_series
-            ),
-            surrogate_posterior=variational_posteriors,
-            optimizer=optimizer,
-            num_steps=num_variational_steps,
-        )
-        return elbo_loss_curve
-
-    elbo_loss_curve = train()
-
-    # Draw samples from variational posterior
-    parameter_samples = variational_posteriors.sample(num_samples)
-
-    return variational_posteriors, parameter_samples, elbo_loss_curve
+    return result, state_samples, loss_curve
 
 
 def forecast(
-    model: sts.Sum,
+    fitted_result,
     observed_time_series: np.ndarray,
-    parameter_samples: dict,
+    state_samples: np.ndarray,
     forecast_horizon: int,
     num_samples: int = 20,
 ) -> tuple:
     """
-    Generate probabilistic forecast.
+    Generate a probabilistic forecast.
 
-    Parameters:
-    -----------
-    model : sts.Sum
-        Fitted structural time series model
-    observed_time_series : np.ndarray
-        Observed time series values
-    parameter_samples : dict
-        Parameter samples from variational posterior
-    forecast_horizon : int
-        Number of steps to forecast
-    num_samples : int
-        Number of forecast scenarios to sample
+    Replaces tfp.sts.forecast → forecast_dist.mean() / stddev() / sample().
 
     Returns:
-    --------
-    tuple
-        (forecast_mean, forecast_std, forecast_samples)
+        forecast_mean    – shape (forecast_horizon,)
+        forecast_std     – shape (forecast_horizon,)
+        forecast_samples – shape (num_samples, forecast_horizon)
     """
-    if not TFP_AVAILABLE:
-        raise ImportError("TensorFlow Probability is required for this template")
+    fc = fitted_result.get_forecast(forecast_horizon)
+    forecast_mean = fc.predicted_mean.values
+    forecast_std  = fc.se_mean.values
 
-    # Generate forecast distribution
-    # TODO(pytorch-migration): forecast_dist = tfp.sts.forecast(
-        model=model,
-        observed_time_series=observed_time_series,
-        parameter_samples=parameter_samples,
-        num_steps_forecast=forecast_horizon,
+    # Simulation-based samples for uncertainty quantification
+    sims = fitted_result.simulate(
+        anchor="end",
+        nsimulations=forecast_horizon,
+        repetitions=num_samples,
     )
-
-    # Extract mean, stddev, and samples
-    forecast_mean = forecast_dist.mean().numpy()[..., 0]
-    forecast_std = forecast_dist.stddev().numpy()[..., 0]
-    forecast_samples = forecast_dist.sample(num_samples).numpy()[..., 0]
+    # sims shape: (forecast_horizon, 1, num_samples) → (num_samples, forecast_horizon)
+    forecast_samples = np.squeeze(sims.values).T if sims.ndim == 3 else sims.values.T
 
     return forecast_mean, forecast_std, forecast_samples
 
 
-def main():
+def main() -> None:
     """Main execution function."""
-    if not TFP_AVAILABLE:
-        logger.error("ERROR: TensorFlow Probability is not installed.", exc_info=True)
-        logger.info("Install with: pip install pyro-ppl")
-        sys.exit(1)
-
     script_dir = Path(__file__).parent
     config = load_config(script_dir / "config.yaml")
     output_dir = ensure_output_dir(get_output_dir(config, script_dir))
 
     # Load data
     data_config = config["data"]
-    repo_root = script_dir.parent
-    data_path = repo_root / data_config["input_file"]
+    data_path = script_dir.parent / data_config["input_file"]
     series = load_time_series(
         str(data_path),
         date_column=data_config.get("date_column", "date"),
         value_column=data_config.get("value_column", "value"),
     )
 
-    # Split data
     evaluator = Evaluator(test_size=config["evaluation"].get("test_size", 0.2))
     train, test = evaluator.split(series)
+    train_values = train.values.astype(np.float64)
 
-    # Convert to numpy for TFP
-    train_values = train.values.astype(np.float32)
-    test.values.astype(np.float32)
-
-    # Build model
+    # Build and fit structural model
     model_config = config.get("model", {})
-    logger.info("Building structural time series model...")
-    model = build_structural_model(
+    logger.info("=== Building structural time series model ===")
+    model_spec = build_structural_model(
         observed_time_series=train_values,
         num_seasons=model_config.get("num_seasons", 12),
         include_trend=model_config.get("include_trend", True),
@@ -254,43 +159,37 @@ def main():
         include_autoregressive=model_config.get("include_autoregressive", False),
         ar_order=model_config.get("ar_order", 1),
     )
-    logger.info(f"Model components: {[c.name for c in model.components]}")
+    logger.info(f"Components: {list(model_spec.keys())}")
 
-    # Fit model
-    logger.info("Fitting model with variational inference...")
-    variational_posteriors, parameter_samples, elbo_loss = fit_model(
-        model=model,
+    logger.info("=== Fitting model ===")
+    fitted_result, state_samples, loss_curve = fit_model(
+        model_spec=model_spec,
         observed_time_series=train_values,
         num_variational_steps=model_config.get("num_variational_steps", 200),
         learning_rate=model_config.get("learning_rate", 0.1),
         num_samples=model_config.get("num_samples", 50),
     )
-    logger.info(f"ELBO loss (final): {elbo_loss[-1]:.2f}")
+    logger.info(f"Log-likelihood: {-loss_curve[0]:.2f}")
 
-    # Generate forecast
+    # Forecast
     forecast_horizon = config["evaluation"].get("forecast_horizon", len(test))
-    logger.info(f"Generating {forecast_horizon}-step forecast...")
+    logger.info(f"=== Generating {forecast_horizon}-step forecast ===")
     forecast_mean, forecast_std, forecast_samples = forecast(
-        model=model,
+        fitted_result=fitted_result,
         observed_time_series=train_values,
-        parameter_samples=parameter_samples,
+        state_samples=state_samples,
         forecast_horizon=forecast_horizon,
         num_samples=model_config.get("forecast_samples", 20),
     )
 
-    # Create forecast index
-    last_date = train.index[-1]
+    # Build forecast index
     freq = pd.infer_freq(train.index) or "D"
     forecast_dates = pd.date_range(
-        start=last_date + pd.Timedelta(days=1),
+        start=train.index[-1] + pd.tseries.frequencies.to_offset(freq),
         periods=forecast_horizon,
         freq=freq,
     )
-
     forecast_series = pd.Series(forecast_mean, index=forecast_dates)
-    pd.Series(forecast_std, index=forecast_dates)
-
-    # Create confidence intervals (95% CI = mean ± 1.96 * std)
     conf_int = pd.DataFrame(
         {
             "lower": forecast_mean - 1.96 * forecast_std,
@@ -299,68 +198,48 @@ def main():
         index=forecast_dates,
     )
 
-    # Evaluate on test set (if forecast horizon matches test length)
+    # Evaluate
     if len(forecast_series) == len(test):
-        mse = mean_squared_error(test.values, forecast_mean)
-        mae = mean_absolute_error(test.values, forecast_mean)
-        rmse = np.sqrt(mse)
-        r2 = r2_score(test.values, forecast_mean)
-
-        logger.info("\nTest Set Performance:")
+        rmse = np.sqrt(mean_squared_error(test.values, forecast_mean))
+        mae  = mean_absolute_error(test.values, forecast_mean)
+        r2   = r2_score(test.values, forecast_mean)
+        logger.info("=== Test Set Performance ===")
         logger.info(f"  RMSE: {rmse:.4f}")
         logger.info(f"  MAE:  {mae:.4f}")
         logger.info(f"  R²:   {r2:.4f}")
-        logger.info(f"  Mean Uncertainty (σ): {forecast_std.mean():.4f}")
+        logger.info(f"  Mean σ: {forecast_std.mean():.4f}")
 
-    # Create plot
+    # Plot
     fig, ax = create_forecast_plot(
         train=train,
         test=test if len(test) <= len(forecast_series) else None,
         forecast=forecast_series,
         conf_int=conf_int,
-        title="TensorFlow Probability Structural Time Series Forecast",
+        title="Structural Time Series Forecast (statsmodels UnobservedComponents)",
         xlabel="Date",
         ylabel="Value",
         train_label="Historical (Train)",
         test_label="Actual (Test)",
-        forecast_label="TFP Forecast",
+        forecast_label="STS Forecast",
         show_ci=True,
     )
-
-    # Save plot
-    plot_path = output_dir / config["output"].get("plot_file", "tfp_forecast.png")
+    plot_path = output_dir / config["output"].get("plot_file", "sts_forecast.png")
     save_plot(fig, plot_path, dpi=config["output"].get("dpi", 300))
-    logger.info(f"\nPlot saved to: {plot_path}")
+    logger.info(f"Plot saved: {plot_path}")
 
-    # Save forecast to CSV
+    # Save forecast CSV
     forecast_df = pd.DataFrame(
         {
-            "date": forecast_series.index,
+            "date":     forecast_series.index,
             "forecast": forecast_mean,
-            "std": forecast_std,
+            "std":      forecast_std,
             "lower_95": conf_int["lower"].values,
             "upper_95": conf_int["upper"].values,
         }
     )
-
-    csv_path = output_dir / config["output"].get("forecast_file", "tfp_forecast.csv")
+    csv_path = output_dir / config["output"].get("forecast_file", "sts_forecast.csv")
     forecast_df.to_csv(csv_path, index=False, encoding="utf-8")
-    logger.info(f"Forecast saved to: {csv_path}")
-
-    # Save metrics if available
-    if len(forecast_series) == len(test):
-        metrics_df = pd.DataFrame(
-            {
-                "metric": ["RMSE", "MAE", "R²", "Mean_Uncertainty"],
-                "value": [rmse, mae, r2, forecast_std.mean()],
-            }
-        )
-
-        metrics_path = output_dir / config["output"].get(
-            "metrics_file", "tfp_metrics.csv"
-        )
-        metrics_df.to_csv(metrics_path, index=False, encoding="utf-8")
-        logger.info(f"Metrics saved to: {metrics_path}")
+    logger.info(f"Forecast saved: {csv_path}")
 
 
 if __name__ == "__main__":
