@@ -63,7 +63,7 @@ def build_structural_model(
 
 def fit_model(
     model_spec: dict,
-    observed_time_series: np.ndarray,
+    observed_time_series: "np.ndarray | pd.Series",
     num_variational_steps: int = 200,
     learning_rate: float = 0.1,
     num_samples: int = 50,
@@ -78,6 +78,9 @@ def fit_model(
         state_samples  – simulation-smoother draws (shape: num_samples × T × state_dim)
         log_likelihood – scalar np.ndarray (proxy for ELBO loss curve)
     """
+    # UnobservedComponents needs a pandas Series for get_forecast to return labelled output
+    if not isinstance(observed_time_series, pd.Series):
+        observed_time_series = pd.Series(observed_time_series)
     uc = UnobservedComponents(observed_time_series, **model_spec)
     result = uc.fit(method="powell", maxiter=num_variational_steps, disp=False)
 
@@ -123,8 +126,8 @@ def forecast(
         nsimulations=forecast_horizon,
         repetitions=num_samples,
     )
-    # sims shape: (forecast_horizon, 1, num_samples) → (num_samples, forecast_horizon)
-    forecast_samples = np.squeeze(sims.values).T if sims.ndim == 3 else sims.values.T
+    # sims is a DataFrame of shape (forecast_horizon, num_samples)
+    forecast_samples = np.array(sims).T   # (num_samples, forecast_horizon)
 
     return forecast_mean, forecast_std, forecast_samples
 
