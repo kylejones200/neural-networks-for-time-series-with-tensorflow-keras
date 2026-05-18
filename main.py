@@ -174,21 +174,14 @@ def load_data() -> None:
         logger.info(f"  R²:   {r2:.4f}")
         logger.info(f"  Mean σ: {forecast_std.mean():.4f}")
 
-    fig, ax = create_forecast_plot(
-        train=train,
-        test=test if len(test) <= len(forecast_series) else None,
-        forecast=forecast_series,
-        conf_int=conf_int,
-        title="Structural Time Series Forecast (statsmodels UnobservedComponents)",
-        xlabel="Date",
-        ylabel="Value",
-        train_label="Historical (Train)",
-        test_label="Actual (Test)",
-        forecast_label="STS Forecast",
-        show_ci=True,
-    )
     plot_path = output_dir / config["output"].get("plot_file", "sts_forecast.png")
-    save_plot(fig, plot_path, dpi=config["output"].get("dpi", 300))
+    combined = pd.concat([train, test]) if len(test) > 0 else train
+    create_forecast_plot(
+        actual=combined,
+        forecast=forecast_series,
+        title="Structural Time Series Forecast (statsmodels UnobservedComponents)",
+        output_path=plot_path,
+    )
     logger.info(f"Plot saved: {plot_path}")
     forecast_df = pd.DataFrame(
         {
