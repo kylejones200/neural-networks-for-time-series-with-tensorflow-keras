@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +20,8 @@ from src import (
     save_plot,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def build_structural_model(
     observed_time_series: np.ndarray,
@@ -30,7 +33,6 @@ def build_structural_model(
 ) -> dict:
     """
     Build a structural time series model specification.
-
     Replaces tfp.sts.LocalLinearTrend / Seasonal / Autoregressive / Sum.
     Returns a kwargs dict for statsmodels UnobservedComponents.
     """
@@ -52,16 +54,14 @@ def build_structural_model(
 
 def fit_model(
     model_spec: dict,
-    observed_time_series: "np.ndarray | pd.Series",
+    observed_time_series: np.ndarray | pd.Series,
     num_variational_steps: int = 200,
     learning_rate: float = 0.1,
     num_samples: int = 50,
 ) -> tuple:
     """
     Fit the structural time series model using statsmodels MLE.
-
     Replaces tfp.vi.fit_surrogate_posterior + tfp.sts.build_factored_surrogate_posterior.
-
     Returns:
         fitted_result  – statsmodels UnobservedComponentsResults
         state_samples  – simulation-smoother draws (shape: num_samples × T × state_dim)
@@ -90,9 +90,7 @@ def forecast(
 ) -> tuple:
     """
     Generate a probabilistic forecast.
-
     Replaces tfp.sts.forecast → forecast_dist.mean() / stddev() / sample().
-
     Returns:
         forecast_mean    – shape (forecast_horizon,)
         forecast_std     – shape (forecast_horizon,)
@@ -110,33 +108,21 @@ def forecast(
 
 def load_data() -> None:
     "Main execution function."
-
     script_dir = Path(__file__).parent
-
     config = load_config(script_dir / "config.yaml")
-
-    output_dir = ensure_output_dir(get_output_dir(config, script_dir))
-
+    output_dir = ensure_output_dir(config)
     data_config = config["data"]
-
     data_path = script_dir.parent / data_config["input_file"]
-
     series = load_time_series(
         str(data_path),
-        date_column=data_config.get("date_column", "date"),
-        value_column=data_config.get("value_column", "value"),
+        date_col=data_config.get("date_column", "date"),
+        value_col=data_config.get("value_column", "value"),
     )
-
     evaluator = Evaluator(test_size=config["evaluation"].get("test_size", 0.2))
-
     train, test = evaluator.split(series)
-
     train_values = train.values.astype(np.float64)
-
     model_config = config.get("model", {})
-
     logger.info("=== Building structural time series model ===")
-
     model_spec = build_structural_model(
         observed_time_series=train_values,
         num_seasons=model_config.get("num_seasons", 12),
@@ -145,11 +131,8 @@ def load_data() -> None:
         include_autoregressive=model_config.get("include_autoregressive", False),
         ar_order=model_config.get("ar_order", 1),
     )
-
     logger.info(f"Components: {list(model_spec.keys())}")
-
     logger.info("=== Fitting model ===")
-
     fitted_result, state_samples, loss_curve = fit_model(
         model_spec=model_spec,
         observed_time_series=train_values,
@@ -157,13 +140,9 @@ def load_data() -> None:
         learning_rate=model_config.get("learning_rate", 0.1),
         num_samples=model_config.get("num_samples", 50),
     )
-
     logger.info(f"Log-likelihood: {-loss_curve[0]:.2f}")
-
     forecast_horizon = config["evaluation"].get("forecast_horizon", len(test))
-
     logger.info(f"=== Generating {forecast_horizon}-step forecast ===")
-
     forecast_mean, forecast_std, forecast_samples = forecast(
         fitted_result=fitted_result,
         observed_time_series=train_values,
@@ -171,17 +150,13 @@ def load_data() -> None:
         forecast_horizon=forecast_horizon,
         num_samples=model_config.get("forecast_samples", 20),
     )
-
     freq = pd.infer_freq(train.index) or "D"
-
     forecast_dates = pd.date_range(
         start=train.index[-1] + pd.tseries.frequencies.to_offset(freq),
         periods=forecast_horizon,
         freq=freq,
     )
-
     forecast_series = pd.Series(forecast_mean, index=forecast_dates)
-
     conf_int = pd.DataFrame(
         {
             "lower": forecast_mean - 1.96 * forecast_std,
@@ -189,7 +164,6 @@ def load_data() -> None:
         },
         index=forecast_dates,
     )
-
     if len(forecast_series) == len(test):
         rmse = np.sqrt(mean_squared_error(test.values, forecast_mean))
         mae = mean_absolute_error(test.values, forecast_mean)
@@ -213,13 +187,9 @@ def load_data() -> None:
         forecast_label="STS Forecast",
         show_ci=True,
     )
-
     plot_path = output_dir / config["output"].get("plot_file", "sts_forecast.png")
-
     save_plot(fig, plot_path, dpi=config["output"].get("dpi", 300))
-
     logger.info(f"Plot saved: {plot_path}")
-
     forecast_df = pd.DataFrame(
         {
             "date": forecast_series.index,
@@ -229,11 +199,8 @@ def load_data() -> None:
             "upper_95": conf_int["upper"].values,
         }
     )
-
     csv_path = output_dir / config["output"].get("forecast_file", "sts_forecast.csv")
-
     forecast_df.to_csv(csv_path, index=False, encoding="utf-8")
-
     logger.info(f"Forecast saved: {csv_path}")
 
 
